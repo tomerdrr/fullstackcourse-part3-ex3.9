@@ -1,10 +1,31 @@
 const express = require("express");
 const app = express();
-const morgan = require("morgan");
-const cors = require("cors");
-app.use(express.json());
+require("dotenv").config();
+
+const Contact = require("./models/contact");
+
+let persons = [];
+
 app.use(express.static("dist"));
+
+const errorHandler = (error, request, response, next) => {
+  console.error(error.name);
+
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: "malformatted id" });
+  } else if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message });
+  }
+  console.log(error);
+  next(error);
+};
+
+const cors = require("cors");
+
+app.use(express.json());
 app.use(cors());
+
+const morgan = require("morgan");
 
 morgan.token("body", function (req, res) {
   if (req.method === "POST") return JSON.stringify(req.body);
@@ -26,29 +47,6 @@ app.use(
   })
 );
 
-let persons = [
-  {
-    id: 1,
-    name: "Arto Hellas",
-    number: "040-123456",
-  },
-  {
-    id: 2,
-    name: "Ada Lovelace",
-    number: "39-44-5323523",
-  },
-  {
-    id: 3,
-    name: "Dan Abramov",
-    number: "12-43-234345",
-  },
-  {
-    id: 4,
-    name: "Mary Poppendieck",
-    number: "39-23-6423122",
-  },
-];
-
 const unknownEndpoint = (request, response) => {
   response.status(404).send({ error: "unknown endpoint" });
 };
@@ -59,65 +57,70 @@ app.get("/", (request, response) => {
 });
 
 app.get("/api/persons", (request, response) => {
-  console.log(persons);
-  response.json(persons);
+  Contact.find({}).then((contacts) => {
+    console.log(contacts);
+    response.json(contacts);
+  });
 });
 
-app.get("/info", (request, response) => {
-  response.send(`
-    <p>Phonebook has info for ${persons.length} people.</p>
-    <p>${new Date().toUTCString()}</p>
-  `);
-});
-
-app.get("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  const person = persons.find((person) => person.id === id);
-  if (person) {
-    console.log("Happened");
-    response.json(person);
-  } else response.status(404).end();
-});
-
-app.delete("/api/persons/:id", (request, response) => {
-  const id = Number(request.params.id);
-  persons = persons.filter((person) => person.id !== id);
-
-  response.status(204).end();
-});
-
-const generateId = () => {
-  return Math.floor(Math.random() * 99999);
-};
-
-app.post("/api/persons", (request, response) => {
+app.post("/api/persons", (request, response, next) => {
   const body = request.body;
 
-  if (!body.name || !body.number) {
-    return response.status(400).json({
-      error: "content missing",
-    });
-  }
-  if (persons.find((person) => person.name === body.name)) {
-    return response.status(400).json({
-      error: "Persons already exists",
-    });
-  }
-
-  let id = generateId();
-  while (persons.find((person) => person.id === id)) id = generateId();
-  const person = {
-    id,
+  const contact = new Contact({
     name: body.name,
     number: body.number,
-  };
+  });
 
-  persons = persons.concat(person);
+  contact
+    .save()
+    .then((savedContact) => {
+      console.log(savedContact);
+      response.json(savedContact);
+    })
+    .catch((error) => next(error));
+});
 
-  response.json(person);
+app.get("/info", (request, response, next) => {
+  response.send(`
+    <p>Phonebook has info for ${Contact.length} people.</p>
+    <p>${new Date().toUTCString()}</p>
+    `);
+});
+
+app.get("/api/persons/:id", (request, response, next) => {
+  console.log(request.params.id);
+  Contact.findById(request.params.id)
+    .then((result) => {
+      response.json(result);
+    })
+    .catch((error) => next(error));
+});
+
+app.delete("/api/persons/:id", (request, response, next) => {
+  Contact.findByIdAndDelete(request.params.id)
+    .then((result) => {
+      console.log(result);
+      response.json(result).status(204).end();
+    })
+    .catch((error) => next(error));
+});
+
+app.put("/api/persons/:id", (request, response, next) => {
+  const { name, number } = request.body;
+
+  Contact.findByIdAndUpdate(
+    request.params.id,
+    { name, number },
+    { new: true, runValidators: true, context: "query" }
+  )
+    .then((updatedContact) => {
+      response.json(updatedContact);
+    })
+    .catch((error) => next(error));
 });
 
 app.use(unknownEndpoint);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT);
