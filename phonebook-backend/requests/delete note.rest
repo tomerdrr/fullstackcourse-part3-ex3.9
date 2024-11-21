@@ -1,0 +1,13 @@
+DELETE http://localhost:3001/api/persons/3
+###
+GET https://fullstackcourse-part3-ex3-9.onrender.com/
+###
+GET http://localhost:3001/api/persons/3
+###
+POST http://localhost:3001/api/persons
+Content-Type: application/json
+
+{ 
+    "name": "Tomer Dror",
+  "number": "054-111-2222"
+}
